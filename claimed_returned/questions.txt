@@ -1,0 +1,38 @@
+Finished a draft of this query.
+
+There are currently no test record marked with 'Claimed returned'. We'll need data for final testing. For now I left that item status filter empty.
+
+---
+
+The prototype example results show a "loan count" field. I labeled this "loan count historical" because it shows the total number of loans all-time for this item, no date filters. I can instead filter this count by the parameter date range if preferred.
+
+---
+
+I'm pulling user first/middle/last name and email. The sample data shows empty fields. Is this data being scrubbed for privacy purposes before moved to LDP?
+
+---
+
+These fields were requested in the prototype but I'm not finding them in LDP tables:
+
+inventory_items.itemVolumeNumber?
+(I don't see this value in inventory items, holdings, instances)
+
+inventory_items.notes: description
+  inventory_items.data has a notes array
+  inventory_holdings.data has a notes array
+
+inventory_holdings.temporaryLocationID
+(inventory_holdings only lists a permanent location ID)
+
+circulation_loans.itemEffectiveLocationAtCheckOut
+(this field no longer exists; closest is checkout_service_point_id)
+
+circulation_loans.claimedReturnedDate
+(there is a return_date, not a claimedReturnedDate)
+
+inventory_instances.dateOfPublication
+(I don't see this value in items, holdings, instances)
+
+inventory_instances.cataloguedDate
+(I don't see this value in items, holdings, instances)
+
