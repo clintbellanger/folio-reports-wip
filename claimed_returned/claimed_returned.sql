@@ -5,9 +5,9 @@ WITH parameters AS (
         /* Choose a start and end date for the loans period */
         '2000-01-01' :: DATE AS start_date,
         '2021-01-01' :: DATE AS end_date,
-        /* Fill in a material type name, or leave blank for all types */
+        /* Fill in a material type name, OR leave blank for all types */
         '' :: VARCHAR AS material_type_filter,
-        /* Fill in a location name, or leave blank for all locations */
+        /* Fill in a location name, OR leave blank for all locations */
         '' :: VARCHAR AS items_permanent_location_filter, --Online, Annex, Main Library
         '' :: VARCHAR AS items_temporary_location_filter, --Online, Annex, Main Library
         '' :: VARCHAR AS items_effective_location_filter, --Online, Annex, Main Library
@@ -18,10 +18,10 @@ WITH parameters AS (
 --SUB-QUERIES
 subquery_circulation AS (
     SELECT
-        l.id as loan_id,
+        l.id AS loan_id,
         l.item_id,
         l.item_status AS loan_item_status,
-        l.action as loan_action,
+        l.action AS loan_action,
         l.renewal_count,
         l.loan_date,
         l.due_date AS loan_due_date,
@@ -52,13 +52,13 @@ subquery_inventory AS (
         lib."name" AS library_name,
         i.barcode,
         imt.name AS material_type,
-        i.item_level_call_number as item_call_number,
-        ih.call_number as holdings_call_number,
+        i.item_level_call_number AS item_call_number,
+        ih.call_number AS holdings_call_number,
         i.chronology,
         i.enumeration,
         ih.copy_number,
-	    ih.shelving_title,
-	    iin.title
+        ih.shelving_title,
+        iin.title
     FROM inventory_items AS i
     LEFT JOIN inventory_locations AS itpl
         ON i.permanent_location_id = itpl.id
@@ -72,43 +72,43 @@ subquery_inventory AS (
         ON itpl.campus_id = cmp.id
     LEFT JOIN inventory_institutions AS inst
         ON itpl.institution_id = inst.id
-    LEFT JOIN inventory_holdings ih on i.holdings_record_id = ih.id
-    LEFT JOIN inventory_instances iin on ih.instance_id = iin.id
-    LEFT JOIN inventory_material_types imt on i.material_type_id = imt.id
-    LEFT JOIN inventory_locations as ihpl
+    LEFT JOIN inventory_holdings ih ON i.holdings_record_id = ih.id
+    LEFT JOIN inventory_instances iin ON ih.instance_id = iin.id
+    LEFT JOIN inventory_material_types imt ON i.material_type_id = imt.id
+    LEFT JOIN inventory_locations AS ihpl
         ON ih.permanent_location_id = ihpl.id
-	WHERE
-    	(itpl."name" = (SELECT items_permanent_location_filter FROM parameters)
-    	       OR '' = (SELECT items_permanent_location_filter FROM parameters))
+    WHERE
+        (itpl."name" = (SELECT items_permanent_location_filter FROM parameters)
+               OR '' = (SELECT items_permanent_location_filter FROM parameters))
     AND (ittl."name" = (SELECT items_temporary_location_filter FROM parameters)
-    	       OR '' = (SELECT items_temporary_location_filter FROM parameters))
+               OR '' = (SELECT items_temporary_location_filter FROM parameters))
     AND (itel."name" = (SELECT items_effective_location_filter FROM parameters)
-    	       OR '' = (SELECT items_effective_location_filter FROM parameters))
+               OR '' = (SELECT items_effective_location_filter FROM parameters))
     AND (lib."name" = (SELECT library_filter FROM parameters)
-        	   OR '' = (SELECT library_filter FROM parameters))
-	AND (cmp."name" = (SELECT campus_filter FROM parameters)
-    	       OR '' = (SELECT campus_filter FROM parameters))
-	AND (inst."name" = (SELECT institution_filter FROM parameters)
-        	   OR '' = (SELECT institution_filter FROM parameters))
+               OR '' = (SELECT library_filter FROM parameters))
+    AND (cmp."name" = (SELECT campus_filter FROM parameters)
+               OR '' = (SELECT campus_filter FROM parameters))
+    AND (inst."name" = (SELECT institution_filter FROM parameters)
+               OR '' = (SELECT institution_filter FROM parameters))
     AND (ihpl."name" = (SELECT items_permanent_location_filter FROM parameters)
-    	       OR '' = (SELECT items_permanent_location_filter FROM parameters))
+               OR '' = (SELECT items_permanent_location_filter FROM parameters))
 ),
-subquery_user as (
+subquery_user AS (
     SELECT
-      uu.id as user_id,
-      ug.group as patron_group,
-      json_extract_path_text(uu.data, 'personal', 'firstName') as first_name,
-      json_extract_path_text(uu.data, 'personal', 'middleName') as middle_name,
-      json_extract_path_text(uu.data, 'personal', 'lastName') as last_name,
-      json_extract_path_text(uu.data, 'personal', 'email') as email
-    from
-      user_users uu
-      LEFT JOIN user_groups ug on uu.patron_group = ug.id
+        uu.id AS user_id,
+        ug.group AS patron_group,
+        json_extract_path_text(uu.data, 'personal', 'firstName') AS first_name,
+        json_extract_path_text(uu.data, 'personal', 'middleName') AS middle_name,
+        json_extract_path_text(uu.data, 'personal', 'lastName') AS last_name,
+        json_extract_path_text(uu.data, 'personal', 'email') AS email
+    FROM
+        user_users uu
+        LEFT JOIN user_groups ug ON uu.patron_group = ug.id
 ),
-subquery_total_loans as (
+subquery_total_loans AS (
     SELECT
         item_id,
-        count(*) as loan_count_historical
+        count(*) AS loan_count_historical
     FROM circulation_loans
     GROUP BY item_id
 )
@@ -138,7 +138,7 @@ SELECT
     si.material_type,
     si.item_call_number,
     si.holdings_call_number,
-	si.shelving_title,
+    si.shelving_title,
     -- user fields
     su.first_name,
     su.middle_name,
@@ -150,8 +150,8 @@ SELECT
     sup.email AS proxy_email
 FROM
     subquery_circulation sc
-    INNER JOIN subquery_inventory si on sc.item_id = si.item_id
-    LEFT JOIN subquery_total_loans stl on si.item_id = stl.item_id
-    LEFT JOIN subquery_user su on sc.user_id = su.user_id
-    LEFT JOIN subquery_user sup on sc.proxy_user_id = sup.user_id
+    INNER JOIN subquery_inventory si ON sc.item_id = si.item_id
+    LEFT JOIN subquery_total_loans stl ON si.item_id = stl.item_id
+    LEFT JOIN subquery_user su ON sc.user_id = su.user_id
+    LEFT JOIN subquery_user sup ON sc.proxy_user_id = sup.user_id
     
