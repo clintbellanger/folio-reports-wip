@@ -1,54 +1,22 @@
 WITH parameters AS (
     SELECT
         /* Search loans with this status */
-        '' :: VARCHAR AS loan_item_status, --Claimed returned
+        '' :: VARCHAR AS loan_item_status,
         /* Choose a start and end date for the loans period */
         '2000-01-01' :: DATE AS start_date,
         '2021-01-01' :: DATE AS end_date,
-        /* Fill in a material type name, OR leave blank for all types */
+        /* Fill in a material type name, or leave blank for all types */
         '' :: VARCHAR AS material_type_filter,
-        /* Fill in a location name, OR leave blank for all locations */
+        /* Fill in a location name, or leave blank for all locations */
         '' :: VARCHAR AS items_permanent_location_filter, --Online, Annex, Main Library
         '' :: VARCHAR AS items_temporary_location_filter, --Online, Annex, Main Library
         '' :: VARCHAR AS items_effective_location_filter, --Online, Annex, Main Library
         '' :: VARCHAR AS institution_filter, -- 'KÃ¸benhavns Universitet','Montoya College'
         '' :: VARCHAR AS campus_filter, -- 'Main Campus','City Campus','Online'
         '' :: VARCHAR AS library_filter -- 'Datalogisk Institut','Adelaide Library'
-),
---SUB-QUERIES
-subquery_circulation AS (
+)
     SELECT
-        l.id as loan_id,
-        l.item_id,
-        il.name as effective_location_at_checkout,
-        l.item_status AS loan_item_status,
-        l.action as loan_action,
-        l.renewal_count,
-        l.loan_date,
-        l.due_date AS loan_due_date,
-        l.return_date AS loan_return_date,
-        json_extract_path_text(l.data, 'claimedReturnedDate') AS claimed_returned_date,
-        lp.name AS loan_policy_name,
-        l.user_id,
-        l.proxy_user_id
-    FROM circulation_loans AS l
-    LEFT JOIN circulation_loan_policies AS lp
-        ON l.loan_policy_id=lp.id
-    LEFT JOIN inventory_locations AS il
-        ON json_extract_path_text(l.data, 'itemEffectiveLocationIdAtCheckOut') = il.id
-    WHERE
-        loan_date >= (SELECT start_date FROM parameters)
-    AND loan_date < (SELECT end_date FROM parameters)
-    AND (
-        l.item_status = (SELECT loan_item_status FROM parameters)
-        OR '' = (SELECT loan_item_status FROM parameters)
-    )
-    AND (il."name" = (SELECT items_effective_location_filter FROM parameters)
-    	     OR '' = (SELECT items_effective_location_filter FROM parameters))
-),
-subquery_inventory AS (
-    SELECT
-        i.id AS item_id,        
+        i.id AS item_id,
         iin.title,
         itpl."name" AS items_perm_location_name,
         ittl."name" AS items_temp_location_name,
@@ -110,80 +78,4 @@ subquery_inventory AS (
     	       OR '' = (SELECT items_permanent_location_filter FROM parameters))
     AND (ihtl."name" = (SELECT items_temporary_location_filter FROM parameters)
     	       OR '' = (SELECT items_temporary_location_filter FROM parameters))
-),
-subquery_user AS (
-    SELECT
-        uu.id AS user_id,
-        ug.group AS patron_group,
-        json_extract_path_text(uu.data, 'personal', 'firstName') AS first_name,
-        json_extract_path_text(uu.data, 'personal', 'middleName') AS middle_name,
-        json_extract_path_text(uu.data, 'personal', 'lastName') AS last_name,
-        json_extract_path_text(uu.data, 'personal', 'email') AS email
-    FROM
-        user_users AS uu
-        LEFT JOIN user_groups ug ON uu.patron_group = ug.id
-),
-subquery_total_loans AS (
-    SELECT
-        item_id,
-        count(item_id) AS loan_count_historical,
-        sum(renewal_count) as renewal_count_historical
-    FROM circulation_loans
-    GROUP BY item_id
-)
-SELECT
-    (SELECT start_date :: VARCHAR FROM parameters) ||
-        ' to ' :: VARCHAR ||
-        (SELECT end_date :: VARCHAR FROM parameters) AS date_range,
-    -- circulation fields
-    sc.effective_location_at_checkout,
-    sc.loan_item_status,
-    sc.loan_action,
-    sc.renewal_count,
-    stl.loan_count_historical,
-    stl.renewal_count_historical,
-    sc.loan_date,
-    sc.loan_due_date,
-    sc.loan_return_date,
-    sc.loan_policy_name,
-    sc.claimed_returned_date,
-    -- inventory fields
-    si.title,
-    si.items_perm_location_name,
-    si.items_temp_location_name,
-    si.items_effective_location_name,
-    si.holdings_perm_location_name,
-    si.holdings_temp_location_name,
-    si.institution_name,
-    si.campus_name,
-    si.library_name,
-    si.barcode,
-    si.material_type,
-    si.item_call_number,
-    si.holdings_call_number,
-    si.volume,
-    si.enumeration,
-    si.chronology,
-    si.copy_number,
-    --TODO si.notes,
-    si.shelving_title,
-    --TODO si.dates_of_publication,
-    si.cataloged_date,
-    -- user fields
-    su.first_name,
-    su.middle_name,
-    su.last_name,
-    su.email,
-    su.patron_group,
-    sup.first_name AS proxy_first_name,
-    sup.middle_name AS proxy_middle_name,
-    sup.last_name AS proxy_last_name,
-    sup.email AS proxy_email,
-    sup.patron_group AS proxy_patron_group
-FROM
-    subquery_circulation sc
-    INNER JOIN subquery_inventory si ON sc.item_id = si.item_id
-    LEFT JOIN subquery_total_loans stl ON si.item_id = stl.item_id
-    LEFT JOIN subquery_user su ON sc.user_id = su.user_id
-    LEFT JOIN subquery_user sup ON sc.proxy_user_id = sup.user_id
-    
+;
