@@ -1,3 +1,58 @@
+/*FIELDS INCLUDED IN SAMPLE:
+Circulation Loans table
+    Effective location at check out
+    Item status
+    Renewal count
+    Action
+    Loan date
+    Due date
+    Return date
+    Claimed returned date
+Circulation Loan Policies table
+    Name
+Inventory Items table    
+    Barcode
+    Item level call number
+    Volume
+    Enumeration
+    Chronology
+    Copy number
+    Notes description
+    Permanent location ID
+    Temporary location ID
+    Effective location ID
+Inventory Holdings table
+    Call number
+    Shelving title
+    Permanent location ID
+    Temporary location ID
+Inventory Instances table
+    Title
+    Cataloged date
+    Date of publication
+Inventory Libraries table
+    Name
+Inventory Campuses table
+    Name
+Inventory Institutions table
+    Name
+Inventory Locations table
+    Name
+Inventory Material Types table
+    Name
+User Users table
+    First name
+    Middle name
+    Last name
+    Email
+    Patron group
+User Groups table
+    Name
+    
+FILTERS: loan item status, loan date range, location name (permanent, temporary, effective)
+
+AGGREGATION: total historical loan sum and renewal sum included (not date-range bound)
+*/
 WITH parameters AS (
     SELECT
         /* Search loans with this status */
@@ -5,8 +60,6 @@ WITH parameters AS (
         /* Choose a start and end date for the loans period */
         '2000-01-01' :: DATE AS start_date,
         '2021-01-01' :: DATE AS end_date,
-        /* Fill in a material type name, OR leave blank for all types */
-        '' :: VARCHAR AS material_type_filter,
         /* Fill in a location name, OR leave blank for all locations */
         '' :: VARCHAR AS items_permanent_location_filter, --Online, Annex, Main Library
         '' :: VARCHAR AS items_temporary_location_filter, --Online, Annex, Main Library
@@ -18,16 +71,16 @@ WITH parameters AS (
 --SUB-QUERIES
 subquery_circulation AS (
     SELECT
-        l.id as loan_id,
+        l.id AS loan_id,
         l.item_id,
-        il.name as effective_location_at_checkout,
+        il.name AS effective_location_at_checkout,
         l.item_status AS loan_item_status,
-        l.action as loan_action,
+        l.action AS loan_action,
         l.renewal_count,
         l.loan_date,
         l.due_date AS loan_due_date,
         l.return_date AS loan_return_date,
-        json_extract_path_text(l.data, 'claimedReturnedDate') AS claimed_returned_date,
+        JSON_EXTRACT_PATH_TEXT(l.data, 'claimedReturnedDate') :: DATE AS claimed_returned_date,
         lp.name AS loan_policy_name,
         l.user_id,
         l.proxy_user_id
@@ -35,7 +88,7 @@ subquery_circulation AS (
     LEFT JOIN circulation_loan_policies AS lp
         ON l.loan_policy_id=lp.id
     LEFT JOIN inventory_locations AS il
-        ON json_extract_path_text(l.data, 'itemEffectiveLocationIdAtCheckOut') = il.id
+        ON JSON_EXTRACT_PATH_TEXT(l.data, 'itemEffectiveLocationIdAtCheckOut') :: VARCHAR = il.id
     WHERE
         loan_date >= (SELECT start_date FROM parameters)
     AND loan_date < (SELECT end_date FROM parameters)
@@ -44,11 +97,12 @@ subquery_circulation AS (
         OR '' = (SELECT loan_item_status FROM parameters)
     )
     AND (il."name" = (SELECT items_effective_location_filter FROM parameters)
-    	     OR '' = (SELECT items_effective_location_filter FROM parameters))
+             OR '' = (SELECT items_effective_location_filter FROM parameters))
 ),
 subquery_inventory AS (
     SELECT
-        i.id AS item_id,        
+        i.id AS item_id,
+        iin.id AS instance_id,
         iin.title,
         itpl."name" AS items_perm_location_name,
         ittl."name" AS items_temp_location_name,
@@ -60,16 +114,14 @@ subquery_inventory AS (
         lib."name" AS library_name,
         i.barcode,
         imt.name AS material_type,
-        i.item_level_call_number as item_call_number,
-        ih.call_number as holdings_call_number,
-        json_extract_path_text(i.data, 'volume') as volume,
-        json_extract_path_text(i.data, 'enumeration') as enumeration,
-        json_extract_path_text(i.data, 'chronology') as chronology,
-        json_extract_path_text(i.data, 'copyNumber') as copy_number,
-	    -- TODO item notes from array
-	    ih.shelving_title,
-	    -- TODO dateOfPublication from array
-	    json_extract_path_text(iin.data, 'catalogedDate') as cataloged_date
+        i.item_level_call_number AS item_call_number,
+        ih.call_number AS holdings_call_number,
+        JSON_EXTRACT_PATH_TEXT(i.data, 'volume') :: VARCHAR AS volume,
+        JSON_EXTRACT_PATH_TEXT(i.data, 'enumeration') :: VARCHAR AS enumeration,
+        JSON_EXTRACT_PATH_TEXT(i.data, 'chronology') :: VARCHAR AS chronology,
+        JSON_EXTRACT_PATH_TEXT(i.data, 'copyNumber') :: VARCHAR AS copy_number,
+        ih.shelving_title,
+        JSON_EXTRACT_PATH_TEXT(iin.data, 'catalogedDate') :: DATE AS cataloged_date
     FROM inventory_items AS i
     LEFT JOIN inventory_locations AS itpl
         ON i.permanent_location_id = itpl.id
@@ -92,33 +144,33 @@ subquery_inventory AS (
     LEFT JOIN inventory_locations AS ihpl
         ON ih.permanent_location_id = ihpl.id
     LEFT JOIN inventory_locations AS ihtl
-        ON json_extract_path_text(i.data, 'temporaryLocationId') = ihtl.id
-	WHERE
-    	(itpl."name" = (SELECT items_permanent_location_filter FROM parameters)
-    	       OR '' = (SELECT items_permanent_location_filter FROM parameters))
+        ON JSON_EXTRACT_PATH_TEXT(i.data, 'temporaryLocationId') :: VARCHAR = ihtl.id
+    WHERE
+        (itpl."name" = (SELECT items_permanent_location_filter FROM parameters)
+               OR '' = (SELECT items_permanent_location_filter FROM parameters))
     AND (ittl."name" = (SELECT items_temporary_location_filter FROM parameters)
-    	       OR '' = (SELECT items_temporary_location_filter FROM parameters))
+               OR '' = (SELECT items_temporary_location_filter FROM parameters))
     AND (itel."name" = (SELECT items_effective_location_filter FROM parameters)
-    	       OR '' = (SELECT items_effective_location_filter FROM parameters))
+               OR '' = (SELECT items_effective_location_filter FROM parameters))
     AND (lib."name" = (SELECT library_filter FROM parameters)
-        	   OR '' = (SELECT library_filter FROM parameters))
-	AND (cmp."name" = (SELECT campus_filter FROM parameters)
-    	       OR '' = (SELECT campus_filter FROM parameters))
-	AND (inst."name" = (SELECT institution_filter FROM parameters)
-        	   OR '' = (SELECT institution_filter FROM parameters))
+               OR '' = (SELECT library_filter FROM parameters))
+    AND (cmp."name" = (SELECT campus_filter FROM parameters)
+               OR '' = (SELECT campus_filter FROM parameters))
+    AND (inst."name" = (SELECT institution_filter FROM parameters)
+               OR '' = (SELECT institution_filter FROM parameters))
     AND (ihpl."name" = (SELECT items_permanent_location_filter FROM parameters)
-    	       OR '' = (SELECT items_permanent_location_filter FROM parameters))
+               OR '' = (SELECT items_permanent_location_filter FROM parameters))
     AND (ihtl."name" = (SELECT items_temporary_location_filter FROM parameters)
-    	       OR '' = (SELECT items_temporary_location_filter FROM parameters))
+               OR '' = (SELECT items_temporary_location_filter FROM parameters))
 ),
 subquery_user AS (
     SELECT
         uu.id AS user_id,
         ug.group AS patron_group,
-        json_extract_path_text(uu.data, 'personal', 'firstName') AS first_name,
-        json_extract_path_text(uu.data, 'personal', 'middleName') AS middle_name,
-        json_extract_path_text(uu.data, 'personal', 'lastName') AS last_name,
-        json_extract_path_text(uu.data, 'personal', 'email') AS email
+        JSON_EXTRACT_PATH_TEXT(uu.data, 'personal', 'firstName') :: VARCHAR AS first_name,
+        JSON_EXTRACT_PATH_TEXT(uu.data, 'personal', 'middleName') :: VARCHAR AS middle_name,
+        JSON_EXTRACT_PATH_TEXT(uu.data, 'personal', 'lastName') :: VARCHAR AS last_name,
+        JSON_EXTRACT_PATH_TEXT(uu.data, 'personal', 'email' :: VARCHAR) AS email
     FROM
         user_users AS uu
         LEFT JOIN user_groups ug ON uu.patron_group = ug.id
@@ -126,10 +178,36 @@ subquery_user AS (
 subquery_total_loans AS (
     SELECT
         item_id,
-        count(item_id) AS loan_count_historical,
-        sum(renewal_count) as renewal_count_historical
+        COUNT(item_id) AS loan_count_historical,
+        SUM(renewal_count) AS renewal_count_historical
     FROM circulation_loans
     GROUP BY item_id
+),
+subquery_items_with_notes AS (
+    SELECT
+        id AS item_id,
+        STRING_AGG(notes, ' | ') AS notes
+    FROM (
+        SELECT
+            inventory_items.id,
+            JSON_EXTRACT_PATH_TEXT(JSON_ARRAY_ELEMENTS(JSON_EXTRACT_PATH(data, 'notes')),'note') :: VARCHAR AS notes
+        FROM inventory_items
+        WHERE id IN (SELECT item_id FROM subquery_inventory) -- avoid doing string concats on the entire db
+    ) AS notes_set
+    GROUP BY id
+),
+subquery_instances_with_publication_dates AS (
+    SELECT
+        id AS instance_id,
+        STRING_AGG(dop, ' | ') AS dates_of_publication
+    FROM (
+        SELECT
+            inventory_instances.id,
+            JSON_EXTRACT_PATH_TEXT(JSON_ARRAY_ELEMENTS(JSON_EXTRACT_PATH(data, 'publication')),'dateOfPublication') :: VARCHAR AS dop
+        FROM inventory_instances
+        WHERE id IN (SELECT instance_id FROM subquery_inventory) -- avoid doing string concats on the entire db
+    ) AS publication_dates_set
+    GROUP BY id
 )
 SELECT
     (SELECT start_date :: VARCHAR FROM parameters) ||
@@ -165,9 +243,9 @@ SELECT
     si.enumeration,
     si.chronology,
     si.copy_number,
-    --TODO si.notes,
+    siwn.notes,
     si.shelving_title,
-    --TODO si.dates_of_publication,
+    siwpd.dates_of_publication,
     si.cataloged_date,
     -- user fields
     su.first_name,
@@ -186,4 +264,5 @@ FROM
     LEFT JOIN subquery_total_loans stl ON si.item_id = stl.item_id
     LEFT JOIN subquery_user su ON sc.user_id = su.user_id
     LEFT JOIN subquery_user sup ON sc.proxy_user_id = sup.user_id
-    
+    LEFT JOIN subquery_items_with_notes siwn ON si.item_id = siwn.item_id
+    LEFT JOIN subquery_instances_with_publication_dates siwpd ON si.instance_id = siwpd.instance_id;
